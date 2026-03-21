@@ -6,7 +6,7 @@ Each case in test_cases.json is tested once, covering:
   2. Deterministic content checks (required/forbidden keywords)
   3. LLM-as-judge for subjective criteria (if "llm_judge" is set in the case)
 
-Results are logged to LangSmith via @pytest.mark.langsmith when LANGCHAIN_API_KEY is set.
+Results are logged to LangSmith via @pytest.mark.langsmith when LANGSMITH_API_KEY is set.
 Without the key, t.log_* calls are no-ops and tests run and assert normally.
 """
 
@@ -43,15 +43,28 @@ def pytest_generate_tests(metafunc):
 def test_agent(agent, llm_judge_client, case):
     inp = case["input"]
     messages = [{"role": "user", "content": inp}] if isinstance(inp, str) else inp
+    trace_metadata = {
+        "eval_case": case["name"],
+        "category": case["category"],
+        "smoke": bool(case.get("smoke")),
+        "has_llm_judge": bool(case.get("llm_judge")),
+    }
+    trace_tags = ["eval", f"category:{case['category']}"]
+    if case.get("smoke"):
+        trace_tags.append("smoke")
 
     t.log_inputs({"input": inp, "category": case["category"]})
 
-    result = invoke_agent(agent, messages)
+    result = invoke_agent(
+        agent,
+        messages,
+        metadata=trace_metadata,
+        tags=trace_tags,
+    )
     all_messages = result["messages"]
     called_tools = get_tool_names(all_messages)
     response = get_final_response(all_messages)
 
-    t.log_outputs({"response": response, "tools_called": called_tools})
     if case.get("llm_judge"):
         t.log_reference_outputs({"criteria": case["llm_judge"]["criteria"]})
 
@@ -165,11 +178,11 @@ def test_agent(agent, llm_judge_client, case):
     all_failures = routing_failures + content_failures
     failure_reason = all_failures[0] if all_failures else None
 
-    t.log_outputs({"failure_reason": failure_reason})
+    t.log_outputs({"response": response, "tools_called": called_tools, "failure_reason": failure_reason})
     t.log_feedback(key="tool_routing", score=0.0 if routing_failures else 1.0)
     t.log_feedback(key="response_content", score=0.0 if content_failures else 1.0)
     if judge_passed is not None:
         t.log_feedback(key="llm_judge", score=1.0 if judge_passed else 0.0)
 
     if all_failures:
-        pytest.fail(all_failures[0])
+        pytest.fail("\n".join(all_failures))

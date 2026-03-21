@@ -50,6 +50,9 @@ _last_api_call_time: float = 0.0
 def invoke_agent(
     agent,
     messages: list,
+    *,
+    metadata: dict | None = None,
+    tags: list[str] | None = None,
     max_retries: int = 2,
     retry_delay: float = 10.0,
 ) -> dict:
@@ -63,6 +66,7 @@ def invoke_agent(
        delay because the OpenAI error message tells us exactly how long to wait.
 
     LangSmith tracing is handled by the @pytest.mark.langsmith plugin.
+    Per-run trace metadata and tags can be passed through LangChain config.
     """
     global _last_api_call_time
     from openai import RateLimitError
@@ -74,7 +78,13 @@ def invoke_agent(
     for attempt in range(max_retries + 1):
         try:
             call_start = time.monotonic()
-            result = agent.invoke({"messages": messages})
+            result = agent.invoke(
+                {"messages": messages},
+                config={
+                    "metadata": metadata or {},
+                    "tags": tags or [],
+                },
+            )
             # Only track timing for real API calls; cache hits are near-instant.
             if time.monotonic() - call_start > _CACHE_HIT_THRESHOLD:
                 _last_api_call_time = time.monotonic()
