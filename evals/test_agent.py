@@ -55,8 +55,8 @@ def test_agent(agent, llm_judge_client, case):
     if case.get("llm_judge"):
         t.log_reference_outputs({"criteria": case["llm_judge"]["criteria"]})
 
-    routing_passed = True
-    content_passed = True
+    routing_failures: list[str] = []
+    content_failures: list[str] = []
     judge_passed = None  # None means "not evaluated"
 
     # ------------------------------------------------------------------
@@ -65,19 +65,18 @@ def test_agent(agent, llm_judge_client, case):
     for expected in case.get("expected_tool_calls", []):
         tool_name = expected["tool"]
         if tool_name not in called_tools:
-            routing_passed = False
-            pytest.fail(
+            routing_failures.append(
                 f"[{case['name']}] Expected tool '{tool_name}' was not called. "
                 f"Actual calls: {called_tools}"
             )
+            continue
 
         if "args" in expected:
             actual_args = get_tool_call_args(all_messages, tool_name)
             for arg_key, expected_substr in expected["args"].items():
                 actual_val = str(actual_args.get(arg_key, ""))
                 if expected_substr.lower() not in actual_val.lower():
-                    routing_passed = False
-                    pytest.fail(
+                    routing_failures.append(
                         f"[{case['name']}] Tool '{tool_name}' arg '{arg_key}': "
                         f"expected substring '{expected_substr}' not found in '{actual_val}'"
                     )
@@ -87,8 +86,7 @@ def test_agent(agent, llm_judge_client, case):
     # ------------------------------------------------------------------
     for tool_name in case.get("forbidden_tools", []):
         if tool_name in called_tools:
-            routing_passed = False
-            pytest.fail(
+            routing_failures.append(
                 f"[{case['name']}] Forbidden tool '{tool_name}' was called. "
                 f"Actual calls: {called_tools}"
             )
@@ -100,8 +98,7 @@ def test_agent(agent, llm_judge_client, case):
         expected_sequence = [e["tool"] for e in case["expected_tool_calls"]]
         filtered = [tool for tool in called_tools if tool in expected_sequence]
         if filtered != expected_sequence:
-            routing_passed = False
-            pytest.fail(
+            routing_failures.append(
                 f"[{case['name']}] Tool call order mismatch. "
                 f"Expected: {expected_sequence}, got: {filtered}"
             )
@@ -111,8 +108,7 @@ def test_agent(agent, llm_judge_client, case):
     # ------------------------------------------------------------------
     max_calls = case.get("max_tool_calls")
     if max_calls is not None and len(called_tools) > max_calls:
-        routing_passed = False
-        pytest.fail(
+        routing_failures.append(
             f"[{case['name']}] Too many tool calls: {len(called_tools)} > {max_calls}. "
             f"Calls: {called_tools}"
         )
@@ -121,16 +117,14 @@ def test_agent(agent, llm_judge_client, case):
     # 5. Non-empty response
     # ------------------------------------------------------------------
     if case.get("response_must_be_nonempty", True) and not response:
-        content_passed = False
-        pytest.fail(f"[{case['name']}] Agent returned an empty response.")
+        content_failures.append(f"[{case['name']}] Agent returned an empty response.")
 
     # ------------------------------------------------------------------
     # 6. Required keywords
     # ------------------------------------------------------------------
     for kw in case.get("required_keywords", []):
         if kw.lower() not in response.lower():
-            content_passed = False
-            pytest.fail(
+            content_failures.append(
                 f"[{case['name']}] Required keyword '{kw}' not found in response.\n"
                 f"Response: {response}"
             )
@@ -140,8 +134,7 @@ def test_agent(agent, llm_judge_client, case):
     # ------------------------------------------------------------------
     for kw in case.get("forbidden_keywords", []):
         if kw.lower() in response.lower():
-            content_passed = False
-            pytest.fail(
+            content_failures.append(
                 f"[{case['name']}] Forbidden keyword '{kw}' found in response.\n"
                 f"Response: {response}"
             )
@@ -159,7 +152,7 @@ def test_agent(agent, llm_judge_client, case):
             agent_response=response,
         )
         if not judge_passed:
-            pytest.fail(
+            content_failures.append(
                 f"[{case['name']}] LLM judge FAILED.\n"
                 f"Criteria: {judge_spec['criteria']}\n"
                 f"Reasoning: {reasoning}\n"
@@ -167,9 +160,16 @@ def test_agent(agent, llm_judge_client, case):
             )
 
     # ------------------------------------------------------------------
-    # 9. LangSmith feedback scores
+    # 9. LangSmith feedback scores (always reached)
     # ------------------------------------------------------------------
-    t.log_feedback(key="tool_routing", score=1.0 if routing_passed else 0.0)
-    t.log_feedback(key="response_content", score=1.0 if content_passed else 0.0)
+    all_failures = routing_failures + content_failures
+    failure_reason = all_failures[0] if all_failures else None
+
+    t.log_outputs({"failure_reason": failure_reason})
+    t.log_feedback(key="tool_routing", score=0.0 if routing_failures else 1.0)
+    t.log_feedback(key="response_content", score=0.0 if content_failures else 1.0)
     if judge_passed is not None:
         t.log_feedback(key="llm_judge", score=1.0 if judge_passed else 0.0)
+
+    if all_failures:
+        pytest.fail(all_failures[0])
