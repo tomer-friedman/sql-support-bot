@@ -9,6 +9,15 @@ from langchain_community.cache import SQLiteCache
 from agent import create_agent, get_engine
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--smoke",
+        action="store_true",
+        default=False,
+        help="Run only the smoke-tagged subset of test cases.",
+    )
+
+
 @pytest.fixture(scope="session", autouse=True)
 def load_env():
     load_dotenv()
@@ -41,8 +50,27 @@ def agent(db_engine):
 
 @pytest.fixture(scope="session")
 def llm_judge_client():
-    """A bare ChatOpenAI instance used as the LLM-as-judge.
-    Kept separate from the agent so judge calls are not contaminated by the
-    music-store system prompt. Uses temperature=0 for deterministic verdicts."""
-    from langchain_openai import ChatOpenAI
-    return ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    """OpenEvals LLM-as-judge factory. Single shared instance across all cases;
+    per-case criteria are passed as a prompt template variable at call time."""
+    from openevals.llm import create_llm_as_judge
+
+    prompt = """\
+You are an impartial evaluator of an AI assistant that helps users with \
+a music catalog and customer accounts.
+
+USER INPUT:
+{user_input}
+
+AGENT RESPONSE:
+{agent_response}
+
+EVALUATION CRITERIA:
+{criteria}
+
+Score 1 if the agent response satisfies the criteria, 0 if it does not. \
+Explain your reasoning briefly."""
+
+    return create_llm_as_judge(
+        prompt=prompt,
+        model="openai:gpt-4o-mini",
+    )

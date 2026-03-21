@@ -6,20 +6,21 @@ Each case in test_cases.json is tested once, covering:
   2. Deterministic content checks (required/forbidden keywords)
   3. LLM-as-judge for subjective criteria (if "llm_judge" is set in the case)
 
-All results are logged to LangSmith when LANGCHAIN_API_KEY is set.
+Results are logged to LangSmith via @pytest.mark.langsmith when LANGCHAIN_API_KEY is set.
+Without the key, t.log_* calls are no-ops and tests run and assert normally.
 """
 
 import json
 import pytest
 from pathlib import Path
+from langsmith import testing as t
 
 from evals.helpers import (
     get_tool_names,
     get_tool_call_args,
     get_final_response,
-    invoke_and_get_run_id,
+    invoke_agent,
     run_llm_judge,
-    log_eval_feedback,
 )
 
 _CASES_PATH = Path(__file__).parent / "test_cases.json"
@@ -33,21 +34,26 @@ def _load_cases():
 def pytest_generate_tests(metafunc):
     if "case" in metafunc.fixturenames:
         cases = _load_cases()
+        if metafunc.config.getoption("--smoke", default=False):
+            cases = [c for c in cases if c.get("smoke")]
         metafunc.parametrize("case", cases, ids=[c["name"] for c in cases])
 
 
+@pytest.mark.langsmith
 def test_agent(agent, llm_judge_client, case):
-    # --- Build message list ---
     inp = case["input"]
-    if isinstance(inp, str):
-        messages = [{"role": "user", "content": inp}]
-    else:
-        messages = inp  # already a list of {role, content} dicts
+    messages = [{"role": "user", "content": inp}] if isinstance(inp, str) else inp
 
-    result, run_id = invoke_and_get_run_id(agent, messages)
+    t.log_inputs({"input": inp, "category": case["category"]})
+
+    result = invoke_agent(agent, messages)
     all_messages = result["messages"]
     called_tools = get_tool_names(all_messages)
     response = get_final_response(all_messages)
+
+    t.log_outputs({"response": response, "tools_called": called_tools})
+    if case.get("llm_judge"):
+        t.log_reference_outputs({"criteria": case["llm_judge"]["criteria"]})
 
     routing_passed = True
     content_passed = True
@@ -92,7 +98,7 @@ def test_agent(agent, llm_judge_client, case):
     # ------------------------------------------------------------------
     if case.get("check_order") and len(case.get("expected_tool_calls", [])) > 1:
         expected_sequence = [e["tool"] for e in case["expected_tool_calls"]]
-        filtered = [t for t in called_tools if t in expected_sequence]
+        filtered = [tool for tool in called_tools if tool in expected_sequence]
         if filtered != expected_sequence:
             routing_passed = False
             pytest.fail(
@@ -146,27 +152,24 @@ def test_agent(agent, llm_judge_client, case):
     judge_spec = case.get("llm_judge")
     if judge_spec:
         user_input_text = inp if isinstance(inp, str) else inp[-1]["content"]
-        judge_passed = run_llm_judge(
+        judge_passed, reasoning = run_llm_judge(
             llm_judge_client=llm_judge_client,
             criteria=judge_spec["criteria"],
             user_input=user_input_text,
             agent_response=response,
-            test_name=case["name"],
         )
         if not judge_passed:
             pytest.fail(
                 f"[{case['name']}] LLM judge FAILED.\n"
                 f"Criteria: {judge_spec['criteria']}\n"
+                f"Reasoning: {reasoning}\n"
                 f"Response: {response}"
             )
 
     # ------------------------------------------------------------------
-    # 9. LangSmith feedback
+    # 9. LangSmith feedback scores
     # ------------------------------------------------------------------
-    log_eval_feedback(
-        run_id=run_id,
-        test_name=case["name"],
-        tool_routing_passed=routing_passed,
-        content_passed=content_passed,
-        judge_passed=judge_passed,
-    )
+    t.log_feedback(key="tool_routing", score=1.0 if routing_passed else 0.0)
+    t.log_feedback(key="response_content", score=1.0 if content_passed else 0.0)
+    if judge_passed is not None:
+        t.log_feedback(key="llm_judge", score=1.0 if judge_passed else 0.0)

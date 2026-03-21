@@ -128,7 +128,7 @@ You can help customers in two main ways:
 Be polite, helpful, and guide customers to provide any information you need (like customer ID) before calling tools."""
 
     agent = create_deep_agent(
-        model=ChatOpenAI(model="gpt-5-mini", temperature=0),
+        model=ChatOpenAI(model="gpt-4o", temperature=0),
         tools=[
             get_albums_by_artist,
             get_tracks_by_artist,
