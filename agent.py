@@ -39,15 +39,30 @@ def get_engine_for_chinook_db():
     )
 
 
-engine = get_engine_for_chinook_db()
-db = SQLDatabase(engine)
+_engine = None
+_db = None
+
+
+def get_engine():
+    """Return the singleton SQLAlchemy engine, initialising it if needed."""
+    global _engine, _db
+    if _engine is None:
+        _engine = get_engine_for_chinook_db()
+        _db = SQLDatabase(_engine)
+    return _engine
+
+
+def get_db():
+    """Lazy singleton for the LangChain SQLDatabase wrapper."""
+    get_engine()  # ensures _engine and _db are both initialised
+    return _db
 
 
 # Music-related tools
 @tool
 def get_albums_by_artist(artist: str):
     """Get albums by an artist."""
-    return db.run(
+    return get_db().run(
         f"""
         SELECT Album.Title, Artist.Name
         FROM Album
@@ -61,7 +76,7 @@ def get_albums_by_artist(artist: str):
 @tool
 def get_tracks_by_artist(artist: str):
     """Get songs by an artist (or similar artists)."""
-    return db.run(
+    return get_db().run(
         f"""
         SELECT Track.Name as SongName, Artist.Name as ArtistName
         FROM Album
@@ -76,7 +91,7 @@ def get_tracks_by_artist(artist: str):
 @tool
 def check_for_songs(song_title: str):
     """Check if a song exists by its name."""
-    return db.run(
+    return get_db().run(
         f"""
         SELECT * FROM Track WHERE Name LIKE '%{song_title}%';
         """,
@@ -88,7 +103,7 @@ def check_for_songs(song_title: str):
 @tool
 def get_customer_info(customer_id: int):
     """Look up customer info given their ID. ALWAYS make sure you have the customer ID before invoking this."""
-    return db.run(f"SELECT * FROM Customer WHERE CustomerID = {customer_id};")
+    return get_db().run(f"SELECT * FROM Customer WHERE CustomerID = {customer_id};")
 
 
 def create_agent():
@@ -113,7 +128,7 @@ You can help customers in two main ways:
 Be polite, helpful, and guide customers to provide any information you need (like customer ID) before calling tools."""
 
     agent = create_deep_agent(
-        model=ChatOpenAI(model="gpt-4o", temperature=0),
+        model=ChatOpenAI(model="gpt-5-mini", temperature=0),
         tools=[
             get_albums_by_artist,
             get_tracks_by_artist,
