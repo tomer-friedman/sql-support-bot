@@ -49,6 +49,7 @@ def main():
 
     routing_scores = []
     content_scores = []
+    judge_scores = []
 
     for run_id in run_ids:
         feedbacks = list(client.list_feedback(run_ids=[run_id]))
@@ -57,6 +58,8 @@ def main():
                 routing_scores.append(fb.score)
             elif fb.key == "response_content" and fb.score is not None:
                 content_scores.append(fb.score)
+            elif fb.key == "llm_judge" and fb.score is not None:
+                judge_scores.append(fb.score)
 
     def rate(scores: list[float]) -> str:
         if not scores:
@@ -65,7 +68,7 @@ def main():
         pct = passed / len(scores) * 100
         return f"{pct:.0f}%  ({passed}/{len(scores)})"
 
-    all_scores = routing_scores + content_scores
+    all_scores = routing_scores + content_scores + judge_scores
 
     print()
     print("=" * 52)
@@ -74,6 +77,7 @@ def main():
     print("=" * 52)
     print(f"  Tool Routing      : {rate(routing_scores)}")
     print(f"  Response Content  : {rate(content_scores)}")
+    print(f"  LLM Judge         : {rate(judge_scores)}")
     print(f"  Overall           : {rate(all_scores)}")
     print("=" * 52)
     print()

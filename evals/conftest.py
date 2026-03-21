@@ -37,3 +37,12 @@ def agent(db_engine):
     """Create the agent once per session. db_engine fixture runs first,
     so the lazy singleton is already initialised when create_agent() runs."""
     return create_agent()
+
+
+@pytest.fixture(scope="session")
+def llm_judge_client():
+    """A bare ChatOpenAI instance used as the LLM-as-judge.
+    Kept separate from the agent so judge calls are not contaminated by the
+    music-store system prompt. Uses temperature=0 for deterministic verdicts."""
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(model="gpt-4o-mini", temperature=0)

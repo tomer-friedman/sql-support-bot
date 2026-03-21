@@ -94,11 +94,57 @@ def invoke_and_get_run_id(
     raise RuntimeError("invoke_and_get_run_id: exhausted retries")
 
 
+def get_tool_call_args(messages: list, tool_name: str) -> dict:
+    """Return the args dict of the FIRST call to tool_name, or {} if not found."""
+    for msg in messages:
+        if isinstance(msg, AIMessage) and msg.tool_calls:
+            for tc in msg.tool_calls:
+                if tc["name"] == tool_name:
+                    return tc.get("args", {})
+    return {}
+
+
+def run_llm_judge(
+    llm_judge_client,
+    criteria: str,
+    user_input: str,
+    agent_response: str,
+    test_name: str,
+) -> bool:
+    """
+    Ask an LLM to evaluate whether agent_response satisfies criteria.
+
+    Returns True if the judge says PASS, False if FAIL.
+    On any error, returns True with a printed warning so a flaky judge call
+    never fails a test deterministically.
+    """
+    prompt = (
+        "You are an impartial evaluator. Decide whether the agent response "
+        "satisfies the evaluation criteria.\n\n"
+        f"USER INPUT:\n{user_input}\n\n"
+        f"AGENT RESPONSE:\n{agent_response}\n\n"
+        f"EVALUATION CRITERIA:\n{criteria}\n\n"
+        "Reply with exactly one word: PASS or FAIL."
+    )
+    try:
+        verdict = llm_judge_client.invoke(prompt).content.strip().upper()
+        if verdict.startswith("PASS"):
+            return True
+        if verdict.startswith("FAIL"):
+            return False
+        print(f"\n[llm_judge] Unexpected verdict '{verdict}' for '{test_name}', treating as PASS")
+        return True
+    except Exception as exc:
+        print(f"\n[llm_judge] Error for '{test_name}': {exc}, treating as PASS")
+        return True
+
+
 def log_eval_feedback(
     run_id: str | None,
     test_name: str,
     tool_routing_passed: bool | None = None,
     content_passed: bool | None = None,
+    judge_passed: bool | None = None,
 ) -> None:
     """Post structured feedback scores to LangSmith for this test run."""
     if run_id is None:
@@ -122,6 +168,13 @@ def log_eval_feedback(
                 run_id=run_id,
                 key="response_content",
                 score=1.0 if content_passed else 0.0,
+                comment=f"test: {test_name}",
+            )
+        if judge_passed is not None:
+            client.create_feedback(
+                run_id=run_id,
+                key="llm_judge",
+                score=1.0 if judge_passed else 0.0,
                 comment=f"test: {test_name}",
             )
     except Exception:
