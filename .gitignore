@@ -3,4 +3,5 @@ venv/
 .venv/
 __pycache__/
 evals/.langchain.db
+evals/results/
 .claude/
