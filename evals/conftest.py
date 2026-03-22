@@ -17,6 +17,18 @@ from agent import create_agent, get_engine
 # any fixtures run) can read LANGSMITH_API_KEY from the environment.
 load_dotenv()
 
+
+def pytest_configure(config):
+    """Set experiment name with timestamp so runs are identifiable in LangSmith.
+    Format: sql-evals-YYYYMMDD-HHMMSS-{smoke|full}
+    Only set if LANGSMITH_EXPERIMENT not already provided by the caller.
+    """
+    if os.environ.get("LANGSMITH_EXPERIMENT"):
+        return
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    run_type = "smoke" if config.getoption("--smoke", default=False) else "full"
+    os.environ["LANGSMITH_EXPERIMENT"] = f"sql-evals-{ts}-{run_type}"
+
 # Module-level list populated by the eval_results fixture during each test.
 # Read by pytest_terminal_summary to build the summary table.
 _eval_results: list[dict] = []
