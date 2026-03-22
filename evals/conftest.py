@@ -116,6 +116,7 @@ Explain your reasoning briefly."""
     return create_llm_as_judge(
         prompt=prompt,
         model="openai:gpt-4o-mini",
+        feedback_key="llm_judge",  # Override default "score" to avoid redundant column
     )
 
 

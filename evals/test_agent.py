@@ -54,7 +54,7 @@ def test_agent(agent, llm_judge_client, case, pytestconfig, eval_results):
     if case.get("smoke"):
         trace_tags.append("smoke")
 
-    t.log_inputs({"input": inp, "category": case["category"]})
+    t.log_inputs({"input": inp, "category": case["category"], "name": case["name"]})
 
     result = invoke_agent(
         agent,
@@ -218,8 +218,7 @@ def test_agent(agent, llm_judge_client, case, pytestconfig, eval_results):
     t.log_outputs({"response": response, "tools_called": called_tools, "failure_reason": failure_reason})
     t.log_feedback(key="tool_routing", score=routing_score)
     t.log_feedback(key="response_content", score=content_score)
-    if judge_passed is not None:
-        t.log_feedback(key="llm_judge", score=1.0 if judge_passed else 0.0)
+    # llm_judge: logged by openevals when judge runs (feedback_key="llm_judge" in conftest)
 
     # ------------------------------------------------------------------
     # 10. Collect result for terminal summary table
