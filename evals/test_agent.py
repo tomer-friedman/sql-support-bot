@@ -78,10 +78,12 @@ def test_agent(agent, llm_judge_client, case, pytestconfig, eval_results):
     content_checks_passed = 0
     content_checks_total = 0
 
+    skip_tool_checks = pytestconfig.getoption("--no-tool-checks")
+
     # ------------------------------------------------------------------
     # 1. Expected tools called (and arg substring checks)
     # ------------------------------------------------------------------
-    for expected in case.get("expected_tool_calls", []):
+    for expected in ([] if skip_tool_checks else case.get("expected_tool_calls", [])):
         tool_name = expected["tool"]
         routing_checks_total += 1
         tool_was_called = tool_name in called_tools
@@ -110,7 +112,7 @@ def test_agent(agent, llm_judge_client, case, pytestconfig, eval_results):
     # ------------------------------------------------------------------
     # 2. Forbidden tools
     # ------------------------------------------------------------------
-    for tool_name in case.get("forbidden_tools", []):
+    for tool_name in ([] if skip_tool_checks else case.get("forbidden_tools", [])):
         routing_checks_total += 1
         if tool_name not in called_tools:
             routing_checks_passed += 1
@@ -123,7 +125,7 @@ def test_agent(agent, llm_judge_client, case, pytestconfig, eval_results):
     # ------------------------------------------------------------------
     # 3. Tool call ordering
     # ------------------------------------------------------------------
-    if case.get("check_order") and len(case.get("expected_tool_calls", [])) > 1:
+    if not skip_tool_checks and case.get("check_order") and len(case.get("expected_tool_calls", [])) > 1:
         routing_checks_total += 1
         expected_sequence = [e["tool"] for e in case["expected_tool_calls"]]
         filtered = [tool for tool in called_tools if tool in expected_sequence]
@@ -139,7 +141,7 @@ def test_agent(agent, llm_judge_client, case, pytestconfig, eval_results):
     # 4. Max tool calls
     # ------------------------------------------------------------------
     max_calls = case.get("max_tool_calls")
-    if max_calls is not None:
+    if not skip_tool_checks and max_calls is not None:
         routing_checks_total += 1
         if len(called_tools) <= max_calls:
             routing_checks_passed += 1

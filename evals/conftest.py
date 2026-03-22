@@ -63,6 +63,12 @@ def pytest_addoption(parser):
         default=False,
         help="Skip LLM-as-judge; only deterministic routing and content checks run.",
     )
+    parser.addoption(
+        "--no-tool-checks",
+        action="store_true",
+        default=False,
+        help="Skip tool routing checks; only correctness (content + LLM judge) checks run.",
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
