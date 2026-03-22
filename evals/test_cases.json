@@ -10,7 +10,7 @@
     "forbidden_tools": ["get_tracks_by_artist", "check_for_songs", "get_customer_info"],
     "check_order": false,
     "max_tool_calls": 1,
-    "required_keywords": ["Let There Be Rock"],
+    "required_keywords": ["For Those About To Rock We Salute You", "Let There Be Rock"],
     "forbidden_keywords": [],
     "response_must_be_nonempty": true,
     "llm_judge": null
@@ -58,7 +58,7 @@
     "forbidden_tools": [],
     "check_order": false,
     "max_tool_calls": 1,
-    "required_keywords": [],
+    "required_keywords": ["František"],
     "forbidden_keywords": ["error", "exception"],
     "response_must_be_nonempty": true,
     "llm_judge": null
@@ -78,7 +78,7 @@
     "forbidden_tools": ["get_customer_info"],
     "check_order": false,
     "max_tool_calls": 1,
-    "required_keywords": ["Let There Be Rock"],
+    "required_keywords": ["For Those About To Rock We Salute You", "Let There Be Rock"],
     "forbidden_keywords": [],
     "response_must_be_nonempty": true,
     "llm_judge": null
