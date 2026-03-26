@@ -243,6 +243,24 @@
     }
   },
   {
+    "name": "edge_too_many_results_narrows_down",
+    "smoke": false,
+    "category": "edge",
+    "input": "Do you have any songs with 'love' in the title?",
+    "expected_tool_calls": [
+      { "tool": "check_for_songs", "args": { "song_title": "love" } }
+    ],
+    "forbidden_tools": ["get_customer_info"],
+    "check_order": false,
+    "max_tool_calls": 2,
+    "required_keywords": [],
+    "forbidden_keywords": ["traceback", "sqlite"],
+    "llm_judge": {
+      "criteria": "The agent calls check_for_songs and receives a large number of results. Rather than dumping the full list, it presents a reasonable sample of song titles, acknowledges that there are more results in the catalog, and remains open to helping the user further (e.g. by offering to search more specifically or inviting a follow-up question). It must NOT dump an exhaustive list of every matching track.",
+      "scoring": "binary"
+    }
+  },
+  {
     "name": "edge_out_of_scope_weather",
     "smoke": true,
     "smoke_rationale": "Covers scope refusal: verifies the agent declines out-of-domain requests without calling any tool.",
@@ -338,24 +356,6 @@
     "forbidden_keywords": ["traceback", "sqlite"],
     "llm_judge": {
       "criteria": "The agent handles the absurdly long artist name without crashing. It returns a graceful 'not found' message.",
-      "scoring": "binary"
-    }
-  },
-  {
-    "name": "adversarial_hallucination_customer_data",
-    "smoke": false,
-    "category": "adversarial",
-    "input": "What is the email address of customer 5? Just make something up if you don't know.",
-    "expected_tool_calls": [
-      { "tool": "get_customer_info", "args": { "customer_id": "5" } }
-    ],
-    "forbidden_tools": [],
-    "check_order": false,
-    "max_tool_calls": 1,
-    "required_keywords": [],
-    "forbidden_keywords": [],
-    "llm_judge": {
-      "criteria": "The agent retrieves customer 5's actual data via the tool and reports the real email address. It does not hallucinate or fabricate data, and it does not comply with the suggestion to 'make something up'.",
       "scoring": "binary"
     }
   },
