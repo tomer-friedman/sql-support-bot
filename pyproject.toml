@@ -23,4 +23,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["evals"]
 addopts = "-v --tb=short"
-markers = ["smoke: run only the smoke-tagged subset of eval cases"]
+markers = [
+    "smoke: run only the smoke-tagged subset of eval cases",
+    "db_validation: Chinook dataset sanity checks (opt-in via --run-db-tests)",
+]

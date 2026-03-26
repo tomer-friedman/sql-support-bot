@@ -67,6 +67,23 @@ def pytest_addoption(parser):
         default=False,
         help="Skip tool routing checks; only correctness (content + LLM judge) checks run.",
     )
+    parser.addoption(
+        "--run-db-tests",
+        action="store_true",
+        default=False,
+        help="Run dataset validation tests against the local Chinook DB.",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-db-tests", default=False):
+        return
+    skip_db = pytest.mark.skip(
+        reason="Dataset validation tests skipped; pass --run-db-tests to run them.",
+    )
+    for item in items:
+        if item.get_closest_marker("db_validation"):
+            item.add_marker(skip_db)
 
 
 @pytest.fixture(scope="session", autouse=True)

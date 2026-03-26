@@ -3,10 +3,13 @@ Dataset validation tests.
 
 These tests query the Chinook DB directly (no agent involved) to confirm
 that all the data our other eval tests depend on actually exists.
-Run these first — if they fail the rest of the suite is unreliable.
+By default they are skipped; pass --run-db-tests to run them.
 """
 
+import pytest
 from sqlalchemy import text
+
+pytestmark = pytest.mark.db_validation
 
 
 def test_acdc_exists(db_engine):
