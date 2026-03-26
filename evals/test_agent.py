@@ -3,7 +3,7 @@ Unified agent eval test.
 
 Each case in test_cases.json is tested once, covering:
   1. Deterministic tool routing checks (expected calls, arg values, forbidden tools, order, count)
-  2. Deterministic content checks (required/forbidden keywords)
+  2. Deterministic content checks (non-empty response, required/forbidden keywords)
   3. LLM-as-judge for subjective criteria (if "llm_judge" is set in the case)
      Skip with --no-llm-judge for faster iteration on deterministic checks only.
 
@@ -152,14 +152,13 @@ def test_agent(agent, llm_judge_client, case, pytestconfig, eval_results):
             )
 
     # ------------------------------------------------------------------
-    # 5. Non-empty response
+    # 5. Non-empty response (always required)
     # ------------------------------------------------------------------
-    if case.get("response_must_be_nonempty", True):
-        content_checks_total += 1
-        if response:
-            content_checks_passed += 1
-        else:
-            content_failures.append(f"[{case['name']}] Agent returned an empty response.")
+    content_checks_total += 1
+    if response:
+        content_checks_passed += 1
+    else:
+        content_failures.append(f"[{case['name']}] Agent returned an empty response.")
 
     # ------------------------------------------------------------------
     # 6. Required keywords

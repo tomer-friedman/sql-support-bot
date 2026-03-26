@@ -28,9 +28,14 @@ def test_acdc_has_albums(db_engine):
         ).fetchall()
     titles = [r[0] for r in rows]
     assert titles, "AC/DC has no albums in the database"
-    assert any("Let There Be Rock" in t for t in titles), (
-        f"Expected 'Let There Be Rock' among AC/DC albums, got: {titles}"
-    )
+    # Matches required_keywords in album_search_acdc and multi_turn_album_after_greeting
+    for needle in (
+        "Let There Be Rock",
+        "For Those About To Rock We Salute You",
+    ):
+        assert any(needle in t for t in titles), (
+            f"Expected album title containing {needle!r} for AC/DC, got: {titles}"
+        )
 
 
 def test_metallica_exists(db_engine):
@@ -68,6 +73,35 @@ def test_customer_5_exists(db_engine):
             text("SELECT CustomerId FROM Customer WHERE CustomerId = 5")
         ).fetchall()
     assert rows, "Customer with ID 5 not found in Customer table"
+
+
+def test_customer_5_firstname_matches_eval_anchor(db_engine):
+    """Required keyword in customer_lookup_with_id and related evals."""
+    with db_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT FirstName FROM Customer WHERE CustomerId = 5")
+        ).fetchone()
+    assert row and row[0] == "František", (
+        f"Expected FirstName 'František' for CustomerId 5, got {row!r}"
+    )
+
+
+def test_customer_7_exists(db_engine):
+    """clarification_account_then_provides_id expects a successful lookup for ID 7."""
+    with db_engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT CustomerId FROM Customer WHERE CustomerId = 7")
+        ).fetchall()
+    assert rows, "Customer with ID 7 not found in Customer table"
+
+
+def test_customer_9999_absent(db_engine):
+    """edge_nonexistent_customer_id assumes this ID does not exist."""
+    with db_engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT CustomerId FROM Customer WHERE CustomerId = 9999")
+        ).fetchall()
+    assert not rows, "Customer 9999 should not exist for edge_nonexistent_customer_id eval"
 
 
 def test_customer_count(db_engine):

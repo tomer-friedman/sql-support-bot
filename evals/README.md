@@ -36,7 +36,7 @@ The 10 smoke cases (tagged `smoke: true` in `test_cases.json`) are chosen to cov
 Each test case can define up to three layers of checks:
 
 1. **Routing** (deterministic) — which tools were called, in what order, and with what arguments
-2. **Content** (deterministic) — required and forbidden keywords in the final response
+2. **Content** (deterministic) — final response must be non-empty; optional required and forbidden keywords
 3. **LLM judge** (probabilistic, opt-out) — natural language criteria evaluated by `gpt-4o-mini`
 
 All three layers produce independent scores reported in the terminal summary.
@@ -67,7 +67,7 @@ All test cases live in `test_cases.json`. Each case is a JSON object with:
 - `smoke_rationale` — required if `smoke: true`; explains why this case represents its category in the smoke suite
 - `input` — string (single-turn) or list of `{role, content}` dicts (multi-turn)
 - `expected_tool_calls`, `forbidden_tools`, `check_order`, `max_tool_calls`
-- `required_keywords`, `forbidden_keywords`, `response_must_be_nonempty`
+- `required_keywords`, `forbidden_keywords`
 - `llm_judge` — `{criteria, scoring}` or `null`
 
 New bugs found in production should become new test cases here.
