@@ -1,5 +1,6 @@
 """Shared helpers for the eval suite."""
 
+import re
 import time
 from langchain_core.messages import AIMessage
 
@@ -35,16 +36,38 @@ def get_tool_call_args(messages: list, tool_name: str) -> dict:
 # Rate control
 # ---------------------------------------------------------------------------
 
-# Proactive throttle: minimum seconds between consecutive *real* API calls.
-# At ~2-3K tokens per call and a 30K TPM limit we can safely do ~10 calls/min,
-# so 2 s spacing keeps us comfortably under the limit without ever needing to
-# wait for a 429. Increase this value if you have a lower TPM tier.
-#
-# Cache hits are excluded from throttling: they return in <50 ms and consume
-# no tokens. Only calls that exceed _CACHE_HIT_THRESHOLD update the timer.
-_MIN_INVOKE_INTERVAL: float = 2.0
-_CACHE_HIT_THRESHOLD: float = 0.5  # seconds; real API calls always exceed this
-_last_api_call_time: float = 0.0
+# No proactive throttle — API latency provides natural spacing between calls.
+# The retry layer below handles any 429s that do occur.
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Return True for any 429 / rate-limit error, however the exception is wrapped."""
+    current: BaseException | None = exc
+    while current is not None:
+        try:
+            from openai import RateLimitError
+            if isinstance(current, RateLimitError):
+                return True
+        except ImportError:
+            pass
+        msg = str(current).lower()
+        if "rate limit" in msg or "429" in msg or "too many requests" in msg:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _parse_retry_after(exc: Exception) -> float | None:
+    """Extract the suggested wait time from an OpenAI 429 error message.
+    The message contains 'try again in 2.536s' or 'try again in 748ms'."""
+    msg = str(exc)
+    m = re.search(r"try again in (\d+(?:\.\d+)?)s", msg)
+    if m:
+        return float(m.group(1))
+    m = re.search(r"try again in (\d+)ms", msg)
+    if m:
+        return float(m.group(1)) / 1000.0
+    return None
 
 
 def invoke_agent(
@@ -53,47 +76,38 @@ def invoke_agent(
     *,
     metadata: dict | None = None,
     tags: list[str] | None = None,
-    max_retries: int = 2,
-    retry_delay: float = 10.0,
+    max_retries: int = 3,
+    retry_delay: float = 5.0,
 ) -> dict:
     """
-    Throttled agent invocation with two layers of rate-limit protection:
+    Agent invocation with smart retry on rate limit errors.
 
-    1. Proactive throttle — enforces a minimum gap between *real* API calls so
-       we stay within the TPM limit by default and never trigger a 429. Cache
-       hits are excluded: they consume no tokens so no throttle is applied.
-    2. Retry with backoff — a safety net for unexpected bursts. Uses a fixed
-       delay because the OpenAI error message tells us exactly how long to wait.
+    Uses the wait time suggested by the API ('try again in Xs') plus a small
+    buffer. Falls back to exponential backoff if no hint is given.
 
     LangSmith tracing is handled by the @pytest.mark.langsmith plugin.
     Per-run trace metadata and tags can be passed through LangChain config.
     """
-    global _last_api_call_time
-    from openai import RateLimitError
-
-    elapsed = time.monotonic() - _last_api_call_time
-    if elapsed < _MIN_INVOKE_INTERVAL:
-        time.sleep(_MIN_INVOKE_INTERVAL - elapsed)
-
     for attempt in range(max_retries + 1):
         try:
-            call_start = time.monotonic()
-            result = agent.invoke(
+            return agent.invoke(
                 {"messages": messages},
                 config={
                     "metadata": metadata or {},
                     "tags": tags or [],
                 },
             )
-            # Only track timing for real API calls; cache hits are near-instant.
-            if time.monotonic() - call_start > _CACHE_HIT_THRESHOLD:
-                _last_api_call_time = time.monotonic()
-            return result
-        except RateLimitError:
-            if attempt == max_retries:
+        except Exception as exc:
+            if not _is_rate_limit_error(exc) or attempt == max_retries:
                 raise
-            print(f"\n[rate limit] unexpected 429 — waiting {retry_delay}s before retry {attempt + 2}/{max_retries + 1}…")
-            time.sleep(retry_delay)
+            api_wait = _parse_retry_after(exc)
+            if api_wait is not None:
+                # API tells us exactly when the bucket refills; add a buffer
+                delay = api_wait + 2.0
+            else:
+                delay = retry_delay * (2 ** attempt)
+            print(f"\n[rate limit] 429 — waiting {delay:.1f}s (attempt {attempt + 1}/{max_retries + 1})…")
+            time.sleep(delay)
 
     raise RuntimeError("invoke_agent: exhausted retries")
 

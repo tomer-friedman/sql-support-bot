@@ -29,8 +29,6 @@ def pytest_configure(config):
     run_type = "smoke" if config.getoption("--smoke", default=False) else "full"
     os.environ["LANGSMITH_EXPERIMENT"] = f"sql-evals-{ts}-{run_type}"
 
-# Module-level list populated by the eval_results fixture during each test.
-# Read by pytest_terminal_summary to build the summary table.
 _eval_results: list[dict] = []
 
 _RESULTS_DIR = Path(__file__).parent / "results"
@@ -138,11 +136,24 @@ Explain your reasoning briefly."""
     )
 
 
-@pytest.fixture(scope="session")
-def eval_results():
-    """Shared list; each test appends one result dict.
-    Read by pytest_terminal_summary to build the table."""
-    return _eval_results
+@pytest.fixture
+def eval_results(case):
+    """Yield a list; on teardown append the result to the session-level list.
+    If the test errors before appending (e.g. retries exhausted), records a
+    failure entry so the summary table stays aligned with pytest's output."""
+    recorded: list[dict] = []
+    yield recorded
+    _eval_results.append(recorded[-1] if recorded else {
+        "name": case["name"],
+        "category": case["category"],
+        "smoke": bool(case.get("smoke")),
+        "routing_passed": 0,
+        "routing_total": 0,
+        "content_passed": 0,
+        "content_total": 0,
+        "judge_passed": None,
+        "overall_passed": False,
+    })
 
 
 # ---------------------------------------------------------------------------
