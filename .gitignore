@@ -7,3 +7,6 @@ evals/results/
 .claude/
 .cursor/
 .pytest_cache/
+data/chinook.db
+.DS_Store
+

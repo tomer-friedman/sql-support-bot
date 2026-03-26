@@ -44,6 +44,17 @@ Then open `agent.ipynb` and run cells sequentially to interact with the agent.
 - "What albums does Pink Floyd have?"
 - "What's the email for customer ID 5?"
 
+## Exploring the database manually
+
+The app loads Chinook into **memory**; for a persistent file you can open in the `sqlite3` shell, [DB Browser for SQLite](https://sqlitebrowser.org/), or any SQLite client:
+
+```bash
+./scripts/build_chinook_db.sh
+sqlite3 data/chinook.db
+```
+
+Inside `sqlite3`, try `.tables`, `.schema Album`, and your `SELECT` statements. Re-run the script anytime to refresh `data/chinook.db` from the upstream SQL.
+
 ## How It Works
 
 - **Database**: Uses the Chinook database (downloads automatically on first run)
