@@ -5,3 +5,5 @@ __pycache__/
 evals/.langchain.db
 evals/results/
 .claude/
+.cursor/
+.pytest_cache/
