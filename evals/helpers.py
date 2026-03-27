@@ -1,5 +1,6 @@
 """Shared helpers for the eval suite."""
 
+import random
 import re
 import time
 from langchain_core.messages import AIMessage
@@ -36,8 +37,9 @@ def get_tool_call_args(messages: list, tool_name: str) -> dict:
 # Rate control
 # ---------------------------------------------------------------------------
 
-# No proactive throttle — API latency provides natural spacing between calls.
-# The retry layer below handles any 429s that do occur.
+# No proactive throttle — tests may run in parallel via pytest-xdist, so
+# per-worker throttling cannot coordinate across processes. The retry layer
+# below handles 429s with backoff and jitter.
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
@@ -82,8 +84,9 @@ def invoke_agent(
     """
     Agent invocation with smart retry on rate limit errors.
 
-    Uses the wait time suggested by the API ('try again in Xs') plus a small
-    buffer. Falls back to exponential backoff if no hint is given.
+    Uses the wait time suggested by the API ('try again in Xs') plus a buffer
+    and jitter so parallel workers do not all retry at once. Falls back to
+    exponential backoff if no hint is given.
 
     LangSmith tracing is handled by the @pytest.mark.langsmith plugin.
     Per-run trace metadata and tags can be passed through LangChain config.
@@ -102,10 +105,10 @@ def invoke_agent(
                 raise
             api_wait = _parse_retry_after(exc)
             if api_wait is not None:
-                # API tells us exactly when the bucket refills; add a buffer
-                delay = api_wait + 2.0
+                # API tells us when the bucket refills; add buffer + jitter.
+                delay = api_wait + 5.0 + random.uniform(0, 3)
             else:
-                delay = retry_delay * (2 ** attempt)
+                delay = retry_delay * (2 ** attempt) + random.uniform(0, 3)
             print(f"\n[rate limit] 429 — waiting {delay:.1f}s (attempt {attempt + 1}/{max_retries + 1})…")
             time.sleep(delay)
 

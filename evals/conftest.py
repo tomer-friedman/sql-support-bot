@@ -2,6 +2,8 @@
 
 import json
 import os
+import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,11 +31,10 @@ def pytest_configure(config):
     run_type = "smoke" if config.getoption("--smoke", default=False) else "full"
     os.environ["LANGSMITH_EXPERIMENT"] = f"sql-evals-{ts}-{run_type}"
 
-_eval_results: list[dict] = []
-
 _RESULTS_DIR = Path(__file__).parent / "results"
 _LATEST_FULL_JSON = _RESULTS_DIR / "latest.json"
 _LATEST_SMOKE_JSON = _RESULTS_DIR / "latest_smoke.json"
+_RUN_TMP_DIR = _RESULTS_DIR / "_current_run"
 
 
 def pytest_addoption(parser):
@@ -97,6 +98,9 @@ def setup_llm_cache(pytestconfig):
     """
     cache_path = os.path.join(os.path.dirname(__file__), ".langchain.db")
 
+    if os.environ.get("PYTEST_XDIST_WORKER"):
+        return
+
     if pytestconfig.getoption("--clear-cache") and os.path.exists(cache_path):
         os.remove(cache_path)
         print(f"\n[cache] cleared {cache_path}")
@@ -153,14 +157,22 @@ Explain your reasoning briefly."""
     )
 
 
+def pytest_sessionstart(session):
+    """Prepare the per-run temp dir used for xdist-safe eval result aggregation."""
+    if not os.environ.get("PYTEST_XDIST_WORKER"):
+        if _RUN_TMP_DIR.exists():
+            shutil.rmtree(_RUN_TMP_DIR)
+        _RUN_TMP_DIR.mkdir(parents=True, exist_ok=True)
+
+
 @pytest.fixture
 def eval_results(case):
-    """Yield a list; on teardown append the result to the session-level list.
+    """Yield a list; on teardown write one xdist-safe JSON result file per test.
     If the test errors before appending (e.g. retries exhausted), records a
     failure entry so the summary table stays aligned with pytest's output."""
     recorded: list[dict] = []
     yield recorded
-    _eval_results.append(recorded[-1] if recorded else {
+    data = recorded[-1] if recorded else {
         "name": case["name"],
         "category": case["category"],
         "smoke": bool(case.get("smoke")),
@@ -170,7 +182,10 @@ def eval_results(case):
         "content_total": 0,
         "judge_passed": None,
         "overall_passed": False,
-    })
+    }
+    _RUN_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"\W", "_", f"{data['category']}_{data['name']}")
+    (_RUN_TMP_DIR / f"{safe}.json").write_text(json.dumps(data))
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +200,14 @@ def _fmt_frac(passed: int, total: int) -> str:
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    _eval_results: list[dict] = []
+    if _RUN_TMP_DIR.exists():
+        for result_file in sorted(_RUN_TMP_DIR.glob("*.json")):
+            try:
+                _eval_results.append(json.loads(result_file.read_text()))
+            except Exception:
+                pass
+
     if not _eval_results:
         return
 
