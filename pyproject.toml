@@ -12,3 +12,19 @@ dependencies = [
     "langchain-openai>=1.1.0",
     "deepagents>=0.1.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.0",
+    "pytest-xdist>=3.0.0",
+    "langsmith>=0.6.3",
+    "openevals>=0.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["evals"]
+addopts = "-v --tb=short -n 1"
+markers = [
+    "smoke: run only the smoke-tagged subset of eval cases",
+    "db_validation: Chinook dataset sanity checks (opt-in via --run-db-tests)",
+]
